@@ -5,11 +5,10 @@ import org.springframework.ai.chat.client.advisor.MessageChatMemoryAdvisor;
 import org.springframework.ai.chat.memory.ChatMemory;
 import org.springframework.ai.chat.memory.InMemoryChatMemoryRepository;
 import org.springframework.ai.chat.memory.MessageWindowChatMemory;
-import org.springframework.web.bind.annotation.CrossOrigin;
-import org.springframework.web.bind.annotation.GetMapping;
-import org.springframework.web.bind.annotation.RequestParam;
-import org.springframework.web.bind.annotation.RestController;
+import org.springframework.ai.chat.messages.Message;
+import org.springframework.web.bind.annotation.*;
 
+import java.util.List;
 import java.util.UUID;
 
 @RestController
@@ -25,14 +24,23 @@ public class GeminiController {
         this.chatMemory = MessageWindowChatMemory.builder()
                 .maxMessages(10)
                 .build();
-
         this.chatClient = chatClientBuilder
-                .defaultAdvisors(MessageChatMemoryAdvisor.builder(chatMemory).build())
+                .defaultAdvisors(MessageChatMemoryAdvisor.builder(chatMemory)
+                        .conversationId(this.conversationId) // Cố định conversationId
+                        .build())
                 .build();
+        System.out.println("Initialized with conversationId: " + this.conversationId);
     }
 
     @GetMapping("/chat")
     public String chat(@RequestParam String message, @RequestParam String character) {
+        // Log memory trước prompt
+        List<Message> currentMemory = chatMemory.get(this.conversationId);
+        System.out.println("Before prompt - Memory size: " + currentMemory.size());
+        if (!currentMemory.isEmpty()) {
+            System.out.println("Sample memory message: " + currentMemory.get(0).getText());
+        }
+
         String systemContext = switch (character) {
             case "Socrates" -> Socrates;
             case "Plato" -> Plato;
@@ -42,16 +50,44 @@ public class GeminiController {
             default -> "Luôn trả lời tiếng Việt";
         };
 
-
         String response = chatClient.prompt()
                 .user(message)
-                .advisors(a -> a.param("conversationId", conversationId))
                 .system(systemContext)
                 .call()
                 .content();
         System.out.println("User: " + message);
         System.out.println("Gemini: " + response);
+
+        // Log memory sau prompt
+        currentMemory = chatMemory.get(this.conversationId);
+        System.out.println("After prompt - Memory size: " + currentMemory.size());
+        if (!currentMemory.isEmpty()) {
+            System.out.println("Sample after prompt: " + currentMemory.get(currentMemory.size() - 1).getText());
+        }
+
         return response;
+    }
+
+    @DeleteMapping("/chat/history")
+    public String clearChatHistory() {
+        // Log trước clear
+        List<Message> beforeClear = chatMemory.get(this.conversationId);
+        System.out.println("Before clear - Memory size: " + beforeClear.size());
+        if (!beforeClear.isEmpty()) {
+            System.out.println("Sample before clear: " + beforeClear.get(0).getText());
+        }
+
+        chatMemory.clear(this.conversationId);
+
+        // Log sau clear
+        List<Message> afterClear = chatMemory.get(this.conversationId);
+        System.out.println("After clear - Memory size: " + afterClear.size());
+        if (!afterClear.isEmpty()) {
+            System.out.println("Sample after clear: " + afterClear.get(0).getText());
+        }
+
+        System.out.println("Clear chat history completed for ID: " + this.conversationId);
+        return "Lịch sử trò chuyện đã được xóa.";
     }
 
 
